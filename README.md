@@ -1,60 +1,86 @@
 # GW-NAT64
 
-Gateway dual-stack para laboratórios Kathará. Distribui endereços por DHCPv4 e DHCPv6, oferece DNS64 e encaminha tráfego IPv4 e NAT64 para a rede externa.
+Dual-stack gateway for Kathara labs. It assigns addresses using DHCPv4 and DHCPv6, provides DNS64, and forwards IPv4 and NAT64 traffic to the external network.
 
-> **Atenção:** `2001:db8:64::/64` é um prefixo reservado para documentação. Use-o apenas em laboratório isolado; não é roteável na Internet.
+> **Warning:** `2001:db8:64::/64` is reserved for documentation. Use it only in an isolated lab; it is not routable on the Internet.
 
-## Recursos
+## Features
 
-| Serviço | Implementação | Configuração |
+| Service | Implementation | Configuration |
 | --- | --- | --- |
-| DHCPv4 | dnsmasq | `192.168.1.100` a `192.168.1.200` |
-| DHCPv6 | dnsmasq stateful | `2001:db8:64::100` a `2001:db8:64::200` |
-| Router Advertisement | radvd | anuncia roteador e prefixo; SLAAC desativado |
-| DNS64 | BIND 9 | sintetiza AAAA no prefixo `64:ff9b::/96` |
-| NAT64 | Tayga | traduz IPv6 para destinos IPv4 |
-| NAT44 | nftables | permite saída IPv4 dos clientes pela interface externa |
+| DHCPv4 | dnsmasq | `192.168.1.100` to `192.168.1.200` |
+| DHCPv6 | dnsmasq stateful | `2001:db8:64::100` to `2001:db8:64::200` |
+| Router Advertisement | radvd | advertises the router and prefix; SLAAC is disabled |
+| DNS64 | BIND 9 | synthesizes AAAA records using the `64:ff9b::/96` prefix |
+| NAT64 | Tayga | translates IPv6 traffic to IPv4 destinations |
+| NAT44 | nftables | enables clients' IPv4 egress through the external interface |
 
-O RA continua necessário para anunciar o roteador IPv6. `AdvAutonomous off` desativa SLAAC; os endereços IPv6 são entregues por DHCPv6. DHCPv6 não anuncia a rota padrão, por isso os clientes aprendem o roteador pelo RA.
+RA is still required to advertise the IPv6 router. `AdvAutonomous off` disables SLAAC; IPv6 addresses are assigned through DHCPv6. DHCPv6 does not advertise the default route, so clients learn the router from RA.
 
-## Endereçamento
+## Addressing
 
-| Uso | Endereço |
+| Purpose | Address |
 | --- | --- |
-| Gateway IPv4 na rede Kathará | `192.168.1.1/24` |
-| Pool DHCPv4 | `192.168.1.100-192.168.1.200` |
-| Gateway IPv6 na rede Kathará | `2001:db8:64::1/64` |
-| Pool DHCPv6 | `2001:db8:64::100-2001:db8:64::200` |
-| Prefixo NAT64 | `64:ff9b::/96` |
-| Pool IPv4 interno do Tayga | `192.0.0.0/24` |
+| IPv4 gateway on the Kathara network | `192.168.1.1/24` |
+| DHCPv4 pool | `192.168.1.100-192.168.1.200` |
+| IPv6 gateway on the Kathara network | `2001:db8:64::1/64` |
+| DHCPv6 pool | `2001:db8:64::100-2001:db8:64::200` |
+| NAT64 prefix | `64:ff9b::/96` |
+| Tayga internal IPv4 pool | `192.0.0.0/24` |
 
-> Verifique se esses prefixos não conflitam com outras redes do laboratório. O gateway usa `eth1` como interface Kathará por padrão; configure `LAN_IF` se a interface tiver outro nome. A interface com a rota IPv4 padrão é usada como saída externa.
+> Make sure these prefixes do not conflict with other lab networks. The entrypoint uses the interface with the IPv4 default route as the external interface and identifies the other interface as the LAN. If there is more than one LAN interface, set `LAN_IF` explicitly.
 
-## Requisitos
+## Requirements
 
-- Docker com acesso ao daemon e suporte a IPv6 nas redes necessárias.
-- Uma rede externa com conectividade IPv4.
-- Uma rede Kathará separada para os clientes, conectada ao mesmo segmento L2 do gateway.
-- A rede Kathará deve comportar os prefixos acima e reservar `192.168.1.1` e `2001:db8:64::1` para o gateway.
-- O host deve disponibilizar `/dev/net/tun`.
+- Docker access to the daemon and IPv6 support on the required networks.
+- An external network with IPv4 connectivity.
+- A separate Kathara network for clients, connected to the same Layer 2 segment as the gateway.
+- The Kathara network must support the prefixes above and reserve `192.168.1.1` and `2001:db8:64::1` for the gateway.
+- The host must provide `/dev/net/tun`.
 
-Não conecte a interface DHCP a uma LAN física compartilhada: o servidor responde aos clientes DHCP nesse segmento. Os clientes precisam estar no mesmo domínio de camada 2; DHCP relay não está configurado.
+Do not connect the DHCP interface to a shared physical LAN: the server responds to DHCP clients on that segment. Clients must be on the same Layer 2 domain; DHCP relay is not configured.
 
-## Build e execução
+## Quick Start with Kathara
 
-Construa a imagem:
+1. Start the lab as usual with `kathara lstart`.
+2. From this repository, run:
+
+```bash
+./start-gateway.sh
+```
+
+The script builds the image, finds the Kathara network for domain `GW`, creates `ext-net` if needed, and starts the gateway connected to the WAN and LAN. To use a different WAN network, set `GW_EXTERNAL_NETWORK` before running the script. To stop and remove the gateway:
+
+```bash
+./start-gateway.sh stop
+```
+
+The container starts with `--privileged` so Tayga can use TUN and the entrypoint can configure IPv6. This gives the gateway broad access to the host, so use it only in an isolated lab. If more than one lab with a `GW` domain is active, stop the other labs before running the script.
+
+## Manual Container Creation (Docker)
+
+This option is for administration or troubleshooting. For normal student use, run only `./start-gateway.sh`; do not combine the two methods. The manual flow uses `docker create` to create the container and `docker start` to start it.
+
+Build the image:
 
 ```bash
 docker build -t gw-nat64 .
 ```
 
-Crie ou identifique a rede externa. `ext-net` é apenas um exemplo:
+Create or identify the external network. `ext-net` is only an example:
 
 ```bash
 docker network create ext-net
 ```
 
-Crie o container ligado primeiro à rede externa. Depois conecte-o à rede do laboratório **antes de iniciá-lo**; assim, a LAN será normalmente `eth1`:
+Find the name of the Docker network created by Kathara **before** connecting the container to it. Kathara names networks as `kathara_<lab-hash>_<domain>_<hash>`; the prefix and suffix are generated automatically, cannot be fixed in `lab.conf`, and change if the lab is recreated. Instead of entering the full name, filter by the collision domain declared in `lab.conf` (`GW` in this example, e.g. `br[2]=GW`):
+
+```bash
+KATHARA_NET=$(docker network ls --format '{{.Name}}' | grep '_GW_')
+echo "$KATHARA_NET"
+```
+
+Create the container attached to the external network first (`$KATHARA_NET` is not used yet; it is only used by the `docker network connect` command below). Then connect it to the lab network **before starting it**. The entrypoint identifies the external interface from the IPv4 default route and uses the other interface as the LAN:
 
 ```bash
 docker create \
@@ -63,49 +89,48 @@ docker create \
   --cap-add NET_ADMIN \
   --cap-add NET_RAW \
   --device /dev/net/tun \
+  --security-opt systempaths=unconfined \
+  --security-opt apparmor=unconfined \
   --sysctl net.ipv4.ip_forward=1 \
   --sysctl net.ipv6.conf.all.forwarding=1 \
-  -e LAN_IF=eth1 \
   gw-nat64
 
-KATHARA_NET="nome-da-rede-kathara"
-docker network connect \
-  --ip 192.168.1.1 \
-  --ip6 2001:db8:64::1 \
-  "$KATHARA_NET" gw-nat64
+docker network connect "$KATHARA_NET" gw-nat64
 
 docker start gw-nat64
 ```
 
-Defina `KATHARA_NET` com o nome da rede Docker criada pelo Kathará. Configure essa rede para os prefixos deste guia e reserve os endereços do gateway. Se a ordem ou o nome das interfaces for diferente, ajuste `LAN_IF` antes de iniciar o container.
+Kathara networks use a custom driver (`kathara/katharanp_vde`) without real Docker IPAM (IPv6 is disabled and the subnet is `0.0.0.0/0`), so `docker network connect` does not accept `--ip` or `--ip6` on these networks. The `entrypoint.sh` configures `192.168.1.1/24` and `2001:db8:64::1/64` on the LAN interface. Verify the result after startup with `docker exec gw-nat64 ip -brief address`.
 
-O gateway anuncia a rota padrão e faz NAT de saída. Portanto, a rede é isolada no nível do segmento Kathará, mas os clientes podem alcançar redes externas através do gateway. A topologia Kathará precisa conectar os clientes à mesma rede Docker usada em `KATHARA_NET`.
+Docker disables IPv6 by default on any interface connected to a network without IPv6 enabled (such as Kathara networks) and mounts `/proc/sys` read-only in unprivileged containers, preventing `entrypoint.sh` from re-enabling IPv6 on that interface. `--security-opt systempaths=unconfined` allows writes to `/proc/sys`; `--security-opt apparmor=unconfined` removes the default policy that also blocks those writes. Without both options, the container fails to start with `Error: ipv6: IPv6 is disabled on this device`.
 
-## Verificação
+The gateway advertises the default route and performs outbound NAT. The segment is isolated at the Kathara network level, but clients can reach external networks through the gateway. The Kathara topology must connect clients to the same Docker network used in `KATHARA_NET`.
 
-Confira a inicialização e os logs:
+## Verification
+
+Check startup and logs:
 
 ```bash
 docker logs gw-nat64
 ```
 
-Nos clientes, confirme que receberam endereços IPv4 e IPv6 por DHCP e que têm o gateway IPv6 anunciado por RA. Para testar DNS64, consulte um nome que tenha apenas registro A:
+On the clients, confirm that they received IPv4 and IPv6 addresses through DHCP and learned the IPv6 gateway through RA. To test DNS64, query a name that has only an A record:
 
 ```bash
 dig AAAA ipv4only.arpa @192.168.1.1
 ```
 
-A resposta sintetizada deve usar `64:ff9b::/96`.
+The synthesized response should use the `64:ff9b::/96` prefix.
 
-## Gateway em LXC no Proxmox
+## Gateway in an LXC on Proxmox
 
-Esta opção cria uma rede de laboratório separada do bridge físico. O LXC tem uma interface externa com saída IPv4 e outra ligada à rede privada. Os clientes recebem IPv4 por DHCPv4 e IPv6 por DHCPv6; o RA anuncia a rota padrão. IPv4 sai por NAT44 e clientes IPv6 alcançam destinos IPv4 pela combinação DNS64/NAT64.
+This option creates a lab network separate from the physical bridge. The LXC has an external interface with IPv4 connectivity and another interface connected to the private network. Clients receive IPv4 through DHCPv4 and IPv6 through DHCPv6; RA advertises the default route. IPv4 uses NAT44, and IPv6 clients reach IPv4 destinations through DNS64/NAT64.
 
-> **Limite do prefixo:** `2001:db8:64::/64` é reservado para documentação. Com os valores deste guia, clientes IPv6 têm acesso a destinos IPv4 via NAT64, mas não a destinos IPv6 nativos. Para IPv6 nativo na Internet, use um `/64` global delegado pelo ISP, configure a rota no Proxmox e substitua o prefixo nos arquivos `entrypoint.sh`, `radvd.conf` e `dnsmasq.conf`.
+> **Prefix limitation:** `2001:db8:64::/64` is reserved for documentation. With the values in this guide, IPv6 clients can reach IPv4 destinations through NAT64, but not native IPv6 destinations. For native IPv6 Internet access, use a global `/64` delegated by your ISP, configure the route in Proxmox, and replace the prefix in `entrypoint.sh`, `radvd.conf`, and `dnsmasq.conf`.
 
-### 1. Criar a bridge isolada
+### 1. Create the isolated bridge
 
-No host Proxmox, acrescente em `/etc/network/interfaces`:
+On the Proxmox host, add this to `/etc/network/interfaces`:
 
 ```ini
 auto vmbr1
@@ -115,11 +140,11 @@ iface vmbr1 inet manual
     bridge-fd 0
 ```
 
-`vmbr1` não tem porta física nem endereço IP no host. Aplique a configuração com `ifreload -a` (ifupdown2) ou durante uma janela de manutenção reinicie a rede.
+`vmbr1` has no physical port or IP address on the host. Apply the configuration with `ifreload -a` (ifupdown2), or restart networking during a maintenance window.
 
-### 2. Criar o LXC gateway
+### 2. Create the gateway LXC
 
-Use um template Debian 12 disponível no storage do Proxmox; ajuste o caminho do template, o ID e a configuração da interface externa à sua instalação:
+Use a Debian 12 template available in Proxmox storage; adjust the template path, ID, and external interface configuration for your installation:
 
 ```bash
 pct create 200 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
@@ -130,16 +155,16 @@ pct create 200 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
   --unprivileged 0
 ```
 
-O exemplo usa um LXC privilegiado para permitir ao entrypoint criar a interface TUN, alterar rotas/sysctls e configurar nftables. Isso reduz o isolamento entre o container e o host: mantenha o LXC atualizado e não exponha serviços desnecessários. Uma instalação não privilegiada exige ajustar e validar essas permissões no Proxmox.
+This example uses a privileged LXC so the entrypoint can create the TUN interface, change routes and sysctls, and configure nftables. This reduces isolation between the container and the host: keep the LXC updated and do not expose unnecessary services. An unprivileged installation requires adjusting and validating these permissions in Proxmox.
 
-O Tayga precisa de `/dev/net/tun`. No host Proxmox, carregue o módulo `tun` se necessário e acrescente ao `/etc/pve/lxc/200.conf`:
+Tayga requires `/dev/net/tun`. On the Proxmox host, load the `tun` module if needed and add the following to `/etc/pve/lxc/200.conf`:
 
 ```ini
 lxc.cgroup2.devices.allow: c 10:200 rwm
 lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 ```
 
-Inicie o LXC e instale as dependências:
+Start the LXC and install the dependencies:
 
 ```bash
 pct start 200
@@ -148,9 +173,9 @@ pct exec 200 -- apt install -y tayga radvd dnsmasq gettext-base bind9 iproute2 n
 pct exec 200 -- bash -lc 'systemctl disable --now tayga radvd dnsmasq bind9 || true'
 ```
 
-### 3. Copiar a configuração e iniciar os serviços
+### 3. Copy the configuration and start the services
 
-Os comandos `pct push` abaixo são executados no host Proxmox; os arquivos de origem do repositório precisam estar acessíveis nele:
+Run the `pct push` commands below on the Proxmox host; the source files from this repository must be available there:
 
 ```bash
 pct push 200 ./entrypoint.sh /usr/local/sbin/gw-nat64-entrypoint --perms 0755
@@ -160,7 +185,7 @@ pct push 200 ./dnsmasq.conf /etc/dnsmasq.conf.template
 pct push 200 ./named.conf.options /etc/bind/named.conf.options
 ```
 
-Entre no LXC e crie `/etc/systemd/system/gw-nat64.service`:
+Enter the LXC and create `/etc/systemd/system/gw-nat64.service`:
 
 ```ini
 [Unit]
@@ -178,7 +203,7 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-Ative o serviço dentro do LXC:
+Enable the service inside the LXC:
 
 ```bash
 systemctl daemon-reload
@@ -186,27 +211,27 @@ systemctl enable --now gw-nat64
 systemctl status gw-nat64
 ```
 
-O entrypoint configura `192.168.1.1/24` e `2001:db8:64::1/64` em `eth1`; `eth0` é a saída e precisa obter uma rota IPv4 padrão. Se `eth1` tiver outro nome, altere `LAN_IF` na unit. O gateway deve ser iniciado antes dos clientes para que DHCP e RA estejam disponíveis.
+The entrypoint configures `192.168.1.1/24` and `2001:db8:64::1/64` on `eth1`; `eth0` is the external interface and must have an IPv4 default route. If the LAN interface has a different name, change `LAN_IF` in the unit. Start the gateway before the clients so DHCP and RA are available.
 
-### 4. Ligar os clientes e verificar
+### 4. Connect the clients and verify
 
-Conecte as VMs ou outros LXC clientes a `vmbr1`, configure as interfaces para obter IPv4 por DHCP e habilite DHCPv6. Não configure SLAAC para obter endereços: o prefixo é anunciado com `AdvAutonomous off`. Permita no firewall do Proxmox DHCP (UDP 67/68 e 546/547), ICMPv6/NDP/RA e o encaminhamento entre `vmbr1` e a interface externa.
+Connect the client VMs or other LXCs to `vmbr1`, configure their interfaces to obtain IPv4 through DHCP, and enable DHCPv6. Do not use SLAAC to obtain addresses: the prefix is advertised with `AdvAutonomous off`. Allow DHCP (UDP 67/68 and 546/547), ICMPv6/NDP/RA, and forwarding between `vmbr1` and the external interface in the Proxmox firewall.
 
-Nos clientes, confirme o recebimento de endereços nos prefixos `192.168.1.0/24` e `2001:db8:64::/64`, além da rota padrão. Teste a resolução DNS64 apontando para `192.168.1.1`:
+On the clients, confirm they receive addresses from the `192.168.1.0/24` and `2001:db8:64::/64` prefixes, along with a default route. Test DNS64 resolution using `192.168.1.1`:
 
 ```bash
 dig AAAA ipv4only.arpa @192.168.1.1
 ```
 
-Para uma rede de produção, escolha sub-redes sem conflito com a LAN existente. Não use o prefixo `2001:db8` fora de laboratório; para IPv6 nativo, use um prefixo público roteado em vez de simplesmente trocar por uma ULA.
+For a production network, choose subnets that do not conflict with the existing LAN. Do not use the `2001:db8` prefix outside a lab; for native IPv6, use a publicly routed prefix rather than simply replacing it with a ULA.
 
-## Arquivos
+## Files
 
-- `Dockerfile`: imagem Debian 12 e dependências.
-- `entrypoint.sh`: configura interfaces, encaminhamento, rotas e NAT; inicia os serviços.
-- `dnsmasq.conf`: pools DHCPv4/DHCPv6 e opções de DNS.
-- `radvd.conf`: anúncios IPv6 com SLAAC desativado.
-- `named.conf.options`: DNS recursivo com DNS64.
-- `tayga.conf`: configuração NAT64.
+- `Dockerfile`: Debian 12 image and dependencies.
+- `entrypoint.sh`: configures interfaces, forwarding, routes, and NAT; starts the services.
+- `dnsmasq.conf`: DHCPv4/DHCPv6 pools and DNS options.
+- `radvd.conf`: IPv6 advertisements with SLAAC disabled.
+- `named.conf.options`: recursive DNS with DNS64.
+- `tayga.conf`: NAT64 configuration.
 
-O Dockerfile constrói a imagem Docker. A seção Proxmox reutiliza os arquivos de configuração e o entrypoint em um LXC Debian; a rede e os serviços são geridos pelo próprio Proxmox/systemd.
+The Dockerfile builds the Docker image. The Proxmox section reuses the configuration files and entrypoint in a Debian LXC; Proxmox/systemd manage its networking and services.

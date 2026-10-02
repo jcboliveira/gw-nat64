@@ -1,7 +1,7 @@
 FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tayga radvd dnsmasq gettext-base bind9 iproute2 nftables iptables-persistent \
+    tayga radvd dnsmasq gettext-base bind9 iproute2 nftables iptables-persistent procps \
     && rm -rf /var/lib/apt/lists/*
 
 COPY tayga.conf /etc/tayga.conf

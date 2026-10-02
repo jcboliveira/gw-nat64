@@ -45,6 +45,16 @@ RA is still required to advertise the IPv6 router. `AdvAutonomous off` disables 
 - The Kathara network must support the prefixes above and reserve `192.168.1.1` and `2001:db8:64::1` for the gateway.
 - The host must provide `/dev/net/tun`.
 
+### `lab.conf` Requirements
+
+The lab must define a collision domain named `GW` and connect the client-side gateway interface to it. For example:
+
+```ini
+br[2]=GW
+```
+
+Do not set `br[bridged]=true` (or enable `bridged` on another client that should use this gateway). Kathara adds an extra interface connected to the host through NAT when `bridged` is enabled; that can give the client a path that bypasses the `GW` gateway. The startup script searches for exactly one active Kathara network containing the `GW` domain, so stop other labs using `GW` before starting the gateway.
+
 Do not connect the DHCP interface to a shared physical LAN: the server responds to DHCP clients on that segment. Clients must be on the same Layer 2 domain; DHCP relay is not configured.
 
 ## Quick Start with Kathara

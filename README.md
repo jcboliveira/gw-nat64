@@ -1,6 +1,13 @@
 # GW-NAT64
 
-Dual-stack gateway for Kathara labs. It assigns addresses using DHCPv4 and DHCPv6, provides DNS64, and forwards IPv4 and NAT64 traffic to the external network.
+Dual-stack gateway for lab environments. It assigns addresses using DHCPv4 and DHCPv6, provides DNS64, and forwards IPv4 and NAT64 traffic to the external network.
+
+This repository documents two deployment options for the same gateway:
+
+- **Kathara:** run the gateway alongside the lab using the provided startup script.
+- **Proxmox:** run the gateway in a Debian LXC, managed by systemd.
+
+Choose the deployment guide that matches your environment. The addressing and services are shared; setup and networking requirements differ.
 
 > **Warning:** `2001:db8:64::/64` is reserved for documentation. Use it only in an isolated lab; it is not routable on the Internet.
 
@@ -21,16 +28,16 @@ RA is still required to advertise the IPv6 router. `AdvAutonomous off` disables 
 
 | Purpose | Address |
 | --- | --- |
-| IPv4 gateway on the Kathara network | `192.168.1.1/24` |
+| IPv4 gateway on the LAN | `192.168.1.1/24` |
 | DHCPv4 pool | `192.168.1.100-192.168.1.200` |
-| IPv6 gateway on the Kathara network | `2001:db8:64::1/64` |
+| IPv6 gateway on the LAN | `2001:db8:64::1/64` |
 | DHCPv6 pool | `2001:db8:64::100-2001:db8:64::200` |
 | NAT64 prefix | `64:ff9b::/96` |
 | Tayga internal IPv4 pool | `192.0.0.0/24` |
 
 > Make sure these prefixes do not conflict with other lab networks. The entrypoint uses the interface with the IPv4 default route as the external interface and identifies the other interface as the LAN. If there is more than one LAN interface, set `LAN_IF` explicitly.
 
-## Requirements
+## Kathara Requirements
 
 - Docker access to the daemon and IPv6 support on the required networks.
 - An external network with IPv4 connectivity.
@@ -189,7 +196,7 @@ Enter the LXC and create `/etc/systemd/system/gw-nat64.service`:
 
 ```ini
 [Unit]
-Description=Gateway DHCP, DNS64 e NAT64
+Description=DHCP, DNS64, and NAT64 gateway
 Wants=network-online.target
 After=network-online.target
 
